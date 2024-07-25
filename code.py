@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 from sklearn.linear_model import LinearRegression
 import statsmodels.api as sm
-import PyPDF2
+from PyPDF2 import PdfReader
 
 # Function to load uploaded share price data
 def load_share_prices(file):
@@ -11,10 +11,9 @@ def load_share_prices(file):
 
 # Function to extract text from PDF using PyPDF2
 def extract_text_from_pdf(pdf_file):
-    pdf_reader = PyPDF2.PdfReader(pdf_file)
+    pdf_reader = PdfReader(pdf_file)
     text = ""
-    for page_num in range(pdf_reader.numPages):
-        page = pdf_reader.getPage(page_num)
+    for page in pdf_reader.pages:
         text += page.extract_text()
     return text
 
