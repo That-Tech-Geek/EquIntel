@@ -7,4 +7,4 @@ yfinance
 PyPDF2
 pdf2image 
 pytesseract
-poppler 
+PyMuPDF
