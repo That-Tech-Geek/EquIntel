@@ -1,46 +1,21 @@
 import streamlit as st
 import pandas as pd
-import fitz  # PyMuPDF
-import pytesseract
-from PIL import Image
+import pdfplumber
 import re
-
-# Configure tesseract executable path (adjust if necessary)
-pytesseract.pytesseract.tesseract_cmd = r'/usr/bin/tesseract'  # Update to your Tesseract installation path
 
 # Function to load uploaded share price data
 def load_share_prices(file):
     return pd.read_csv(file, index_col=0, parse_dates=True)
 
-# Function to convert PDF to images
-def convert_pdf_to_images(pdf_file):
-    try:
-        pdf_document = fitz.open(stream=pdf_file.read(), filetype="pdf")
-        images = []
-        for page_num in range(len(pdf_document)):
-            page = pdf_document.load_page(page_num)
-            pix = page.get_pixmap()
-            img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-            images.append(img)
-        return images
-    except Exception as e:
-        st.error(f"Error converting PDF to images: {e}")
-        return []
-
-# Function to extract text from images using OCR
-def extract_text_from_image(image):
-    try:
-        return pytesseract.image_to_string(image)
-    except pytesseract.TesseractNotFoundError:
-        st.error("Tesseract OCR not found. Please ensure it is installed and configured correctly.")
-        return ""
-
-# Function to extract text from PDF by converting to images and applying OCR
+# Function to extract text from PDF using pdfplumber
 def extract_text_from_pdf(uploaded_statements_pdf):
-    images = convert_pdf_to_images(uploaded_statements_pdf)
     text = ""
-    for image in images:
-        text += extract_text_from_image(image)
+    try:
+        with pdfplumber.open(uploaded_statements_pdf) as pdf:
+            for page in pdf.pages:
+                text += page.extract_text() + "\n"
+    except Exception as e:
+        st.error(f"Error extracting text from PDF: {e}")
     return text
 
 # Function to find specific financial data in the extracted text
