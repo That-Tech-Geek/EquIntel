@@ -3,7 +3,6 @@ import pandas as pd
 import fitz  # PyMuPDF
 import pytesseract
 from PIL import Image
-import io
 import re
 
 # Configure tesseract executable path (adjust if necessary)
@@ -27,10 +26,6 @@ def convert_pdf_to_images(pdf_file):
     except Exception as e:
         st.error(f"Error converting PDF to images: {e}")
         return []
-
-# Function to extract text from images using OCR
-# Configure tesseract executable path (update to your Tesseract installation path)
-pytesseract.pytesseract.tesseract_cmd = r'/usr/bin/tesseract'  # Update this path based on your OS and Tesseract installation
 
 # Function to extract text from images using OCR
 def extract_text_from_image(image):
