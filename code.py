@@ -11,7 +11,7 @@ def load_share_prices(file):
 
 # Function to extract text from PDF using PyPDF2
 def extract_text_from_pdf(pdf_file):
-    pdf_reader = PyPDF2.PdfFileReader(pdf_file)
+    pdf_reader = PyPDF2.PdfReader(pdf_file)
     text = ""
     for page_num in range(pdf_reader.numPages):
         page = pdf_reader.getPage(page_num)
