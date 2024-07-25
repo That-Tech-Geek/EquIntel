@@ -1,9 +1,9 @@
 import streamlit as st
 import pandas as pd
-import io
-from pdf2image import convert_from_bytes
+import fitz  # PyMuPDF
 import pytesseract
 from PIL import Image
+import io
 import re
 
 # Configure tesseract executable path (adjust if necessary)
@@ -16,7 +16,13 @@ def load_share_prices(file):
 # Function to convert PDF to images
 def convert_pdf_to_images(pdf_file):
     try:
-        images = convert_from_bytes(pdf_file.read())
+        pdf_document = fitz.open(stream=pdf_file.read(), filetype="pdf")
+        images = []
+        for page_num in range(len(pdf_document)):
+            page = pdf_document.load_page(page_num)
+            pix = page.get_pixmap()
+            img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+            images.append(img)
         return images
     except Exception as e:
         st.error(f"Error converting PDF to images: {e}")
