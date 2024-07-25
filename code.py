@@ -29,8 +29,16 @@ def convert_pdf_to_images(pdf_file):
         return []
 
 # Function to extract text from images using OCR
+# Configure tesseract executable path (update to your Tesseract installation path)
+pytesseract.pytesseract.tesseract_cmd = r'/usr/bin/tesseract'  # Update this path based on your OS and Tesseract installation
+
+# Function to extract text from images using OCR
 def extract_text_from_image(image):
-    return pytesseract.image_to_string(image)
+    try:
+        return pytesseract.image_to_string(image)
+    except pytesseract.TesseractNotFoundError:
+        st.error("Tesseract OCR not found. Please ensure it is installed and configured correctly.")
+        return ""
 
 # Function to extract text from PDF by converting to images and applying OCR
 def extract_text_from_pdf(uploaded_statements_pdf):
