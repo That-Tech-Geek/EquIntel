@@ -1,24 +1,36 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
-import PyPDF2
+from pdf2image import convert_from_path
+import pytesseract
+from PIL import Image
 import re
+
+# Configure tesseract executable path (adjust if necessary)
+pytesseract.pytesseract.tesseract_cmd = r'/usr/bin/tesseract'  # Update to your Tesseract installation path
 
 # Function to load uploaded share price data
 def load_share_prices(file):
     return pd.read_csv(file, index_col=0, parse_dates=True)
 
-# Function to extract text from PDF using PyPDF2
+# Function to convert PDF to images
+def convert_pdf_to_images(pdf_file):
+    images = convert_from_path(pdf_file)
+    return images
+
+# Function to extract text from images using OCR
+def extract_text_from_image(image):
+    return pytesseract.image_to_string(image)
+
+# Function to extract text from PDF by converting to images and applying OCR
 def extract_text_from_pdf(pdf_file):
-    pdf_reader = PyPDF2.PdfReader(pdf_file)
+    images = convert_pdf_to_images(pdf_file)
     text = ""
-    for page in pdf_reader.pages:
-        text += page.extract_text()
+    for image in images:
+        text += extract_text_from_image(image)
     return text
 
 # Function to find specific financial data in the extracted text
 def find_financial_data_in_text(text, key):
-    # Use regular expressions to match financial data more flexibly
     pattern = re.compile(rf'{key}[\s:]*([\d,\.]+)', re.IGNORECASE)
     match = pattern.search(text)
     if match:
