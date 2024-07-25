@@ -56,7 +56,7 @@ def get_financial_data_from_pdf(pdf_text, keys):
         data[key] = find_financial_data_in_text(pdf_text, key)
     return pd.Series(data)
 
-# Functions for calculations
+# Functions for calculations (reused from the previous code)
 def calculate_moat_indicators(financials):
     net_income = financials.get('Net Income')
     total_assets = financials.get('Total Assets')
