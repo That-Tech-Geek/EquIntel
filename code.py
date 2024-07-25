@@ -28,7 +28,9 @@ def find_financial_data_in_text(text, key):
                     return float(part.replace(',', '').replace('$', ''))
                 except ValueError:
                     continue
+    st.write(f"Could not find {key} in the extracted text.")
     return None
+
 
 # Function to get financial data from PDF text
 def get_financial_data_from_pdf(pdf_text, keys):
