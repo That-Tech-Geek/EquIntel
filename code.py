@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-from PyPDF2 import PdfReader
+import PyPDF2
 import re
 
 # Function to load uploaded share price data
@@ -10,7 +10,7 @@ def load_share_prices(file):
 
 # Function to extract text from PDF using PyPDF2
 def extract_text_from_pdf(pdf_file):
-    pdf_reader = PdfReader(pdf_file)
+    pdf_reader = PyPDF2.PdfReader(pdf_file)
     text = ""
     for page in pdf_reader.pages:
         text += page.extract_text()
@@ -95,6 +95,10 @@ def find_operating_leverage(financials):
         return operating_leverage
     return None
 
+def conduct_stress_test(financials):
+    # Example stress scenarios: need specific financial data to implement
+    return "Stress test results based on financial data."
+
 def pronounce_verdict(roic, stock_returns, industry_average, cagr, market_cap, intrinsic_value, operating_leverage):
     verdict = "Invest" if roic and roic > 0.1 and stock_returns > industry_average and cagr and cagr > 0.05 and market_cap and market_cap < intrinsic_value and operating_leverage and operating_leverage > 0.5 else "Do Not Invest"
     return verdict
@@ -120,7 +124,8 @@ if uploaded_share_prices and uploaded_statements_pdf:
     
     roic = calculate_moat_indicators(financials)
     investments_in_high, investments_in_low = analyze_investments(financials)
-    stock_returns, industry_average = assess_returns(share_prices)
+    stock_returns = share_prices['Close'].pct_change().mean()
+    industry_average = 0.05  # Example fixed value; replace with actual industry average
     cagr = assess_growth(financials)
     market_cap, intrinsic_value = define_valuation(financials)
     stress_scenarios = conduct_stress_test(financials)
