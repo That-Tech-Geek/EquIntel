@@ -52,13 +52,17 @@ def get_financial_data_from_pdf(pdf_text, keys):
     for key in keys:
         values = find_all_financial_data_in_text(pdf_text, key)
         for value in values:
-            if dates:
-                date = dates[min(len(dates) - 1, len(values) - 1)]  # Use the latest date for simplicity
-            else:
-                date = 'Unknown'
+            date = dates[min(len(dates) - 1, len(values) - 1)] if dates else 'Unknown'
             data[key].append({'Date': date, 'Value': value})
     
-    return pd.DataFrame({key: pd.DataFrame(data[key]) for key in keys})
+    # Create a DataFrame for each key with proper indexing
+    data_frames = {}
+    for key in keys:
+        if data[key]:
+            df = pd.DataFrame(data[key])
+            data_frames[key] = df
+    
+    return data_frames
 
 # Functions for calculations (reused from the previous code)
 def calculate_moat_indicators(financials):
@@ -148,22 +152,24 @@ if uploaded_share_prices and uploaded_statements_pdf:
     
     st.write("Extracted Financial Data:")
     for key in financial_keys:
-        if not financial_data[key].empty:
-            st.write(f"{key}:")
-            st.write(financial_data[key])
-        else:
-            st.write(f"Could not find {key} in the extracted text. Here are some contexts where it might appear:")
-            context_pattern = re.compile(rf'.{{0,30}}{key}.{{0,30}}', re.IGNORECASE)
-            context_matches = context_pattern.findall(pdf_text)
-            for context in context_matches:
-                st.write(f"...{context}...")
-            # Display a text input box for additional user input if data is not available
-            additional_info = st.text_input(f"Input {key} (if any):", key=key)
-            if additional_info:
-                try:
-                    financial_data[key] = pd.DataFrame({'Date': ['Unknown'], 'Value': [float(additional_info)]})
-                except ValueError:
-                    st.write(f"Invalid input for {key}. Please enter a numeric value.")
+        if key in financial_data:
+            df = financial_data[key]
+            if not df.empty:
+                st.write(f"{key}:")
+                st.write(df)
+            else:
+                st.write(f"Could not find {key} in the extracted text. Here are some contexts where it might appear:")
+                context_pattern = re.compile(rf'.{{0,30}}{key}.{{0,30}}', re.IGNORECASE)
+                context_matches = context_pattern.findall(pdf_text)
+                for context in context_matches:
+                    st.write(f"...{context}...")
+                # Display a text input box for additional user input if data is not available
+                additional_info = st.text_input(f"Input {key} (if any):", key=key)
+                if additional_info:
+                    try:
+                        financial_data[key] = pd.DataFrame({'Date': ['Unknown'], 'Value': [float(additional_info)]})
+                    except ValueError:
+                        st.write(f"Invalid input for {key}. Please enter a numeric value.")
     
     # Perform calculations based on the most recent data
     latest_financials = {key: df['Value'].iloc[-1] for key, df in financial_data.items() if not df.empty}
@@ -179,8 +185,8 @@ if uploaded_share_prices and uploaded_statements_pdf:
     verdict = pronounce_verdict(roic, stock_returns, industry_average, cagr, market_cap, intrinsic_value, operating_leverage)
 
     st.write(f"ROIC: {roic}")
-    st.write(f"Investments in times of high performance: {investments_in_high}")
-    st.write(f"Investments in times of low performance: {investments_in_low}")
+    st.write(f"Investments in High Performing Companies: {investments_in_high}")
+    st.write(f"Investments in Low Performing Companies: {investments_in_low}")
     st.write(f"Stock returns: {stock_returns}")
     st.write(f"Industry average returns: {industry_average}")
     st.write(f"CAGR: {cagr}")
