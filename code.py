@@ -20,7 +20,7 @@ def extract_text_from_pdf(uploaded_statements_pdf):
 
 # Function to find specific financial data in the extracted text
 def find_financial_data_in_text(text, key):
-    pattern = re.compile(rf'{key}[\s:]*([\d,\.]+)', re.IGNORECASE)
+    pattern = re.compile(rf'{key}[\s:]*\$?([\d,\.]+)', re.IGNORECASE)
     match = pattern.search(text)
     if match:
         return float(match.group(1).replace(',', '').replace('$', ''))
