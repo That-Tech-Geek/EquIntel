@@ -1,123 +1,68 @@
 import streamlit as st
 import pandas as pd
-import fitz  # PyMuPDF
-import easyocr
-from PIL import Image
+import pdfplumber
 import re
-import yfinance as yf
-
-# Initialize EasyOCR reader
-reader = easyocr.Reader(['en'])  # Initialize reader with English language
-
-# Define exchange to benchmark mapping
-exchange_benchmarks = {
-    'NSE': 'NIFTY 50',
-    'BSE': 'SENSEX',
-    'NASDAQ': 'NASDAQ Composite',
-    'NYSE': 'NYSE Composite',
-    # Add more exchanges and their benchmarks here
-}
+from datetime import datetime
 
 # Function to load uploaded share price data
 def load_share_prices(file):
     return pd.read_csv(file, index_col=0, parse_dates=True)
 
-# Function to convert PDF to images
-def convert_pdf_to_images(pdf_file):
-    try:
-        pdf_document = fitz.open(stream=pdf_file.read(), filetype="pdf")
-        images = []
-        for page_num in range(len(pdf_document)):
-            page = pdf_document.load_page(page_num)
-            pix = page.get_pixmap()
-            img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-            images.append(img)
-        return images
-    except Exception as e:
-        st.error(f"Error converting PDF to images: {e}")
-        return []
-
-# Function to extract text from images using EasyOCR
-def extract_text_from_image(image):
-    try:
-        return ' '.join([result[1] for result in reader.readtext(image)])
-    except Exception as e:
-        st.error(f"Error extracting text from image: {e}")
-        return ""
-
-# Function to extract text from PDF by converting to images and applying OCR
+# Function to extract text from PDF using pdfplumber
 def extract_text_from_pdf(uploaded_statements_pdf):
-    images = convert_pdf_to_images(uploaded_statements_pdf)
     text = ""
-    for image in images:
-        text += extract_text_from_image(image)
+    try:
+        with pdfplumber.open(uploaded_statements_pdf) as pdf:
+            for page in pdf.pages:
+                text += page.extract_text() + "\n"
+    except Exception as e:
+        st.error(f"Error extracting text from PDF: {e}")
     return text
 
-# Function to find specific financial data in the extracted text
-def find_financial_data_in_text(text, key):
-    pattern = re.compile(rf'{key}[\s:]*([\d,\.]+)', re.IGNORECASE)
-    match = pattern.search(text)
-    if match:
-        return float(match.group(1).replace(',', '').replace('$', ''))
-    return None
+# Function to find all possible values for a financial parameter in the extracted text
+def find_all_financial_data_in_text(text, key):
+    pattern = re.compile(rf'{key}[\s:]*[\$]?([\d,\.]+)', re.IGNORECASE)
+    matches = pattern.findall(text)
+    if matches:
+        st.write(f"Found possible matches for {key}:")
+        results = []
+        for match in matches:
+            value = float(match.replace(',', '').replace('$', ''))
+            results.append(value)
+            st.write(f"- {value}")
+        return results
+    else:
+        # Debug: Show the context around the missing key
+        context_pattern = re.compile(rf'.{{0,30}}{key}.{{0,30}}', re.IGNORECASE)
+        context_matches = context_pattern.findall(text)
+        st.write(f"Could not find {key} in the extracted text. Here are some contexts where it might appear:")
+        for context in context_matches:
+            st.write(f"...{context}...")
+    return []
 
-# Function to get financial data from PDF text
+# Function to get financial data from PDF text with associated dates
 def get_financial_data_from_pdf(pdf_text, keys):
-    data = {}
-    for key in keys:
-        value = find_financial_data_in_text(pdf_text, key)
-        if value is None:
-            data[key] = None
-        else:
-            data[key] = value
-    return pd.Series(data)
-
-import time
-
-def fetch_industry_returns(exchange, retries=3, delay=5):
-    benchmark = exchange_benchmarks.get(exchange)
-    if not benchmark:
-        st.error(f"No benchmark available for the selected exchange: {exchange}.")
-        return None
-
-    attempt = 0
-    while attempt < retries:
-        try:
-            st.write(f"Fetching industry returns data for benchmark: {benchmark}")
-            data = yf.download(benchmark, start="2023-01-01", end="2024-01-01")  # Adjust dates as needed
-            
-            if data.empty:
-                st.error(f"No data found for benchmark: {benchmark}.")
-                return None
-            
-            returns = data['Close'].pct_change().dropna()
-            if returns.empty:
-                st.error("No return data available.")
-                return None
-            
-            average_returns = returns.mean()
-            st.write(f"Industry Average Returns for {benchmark}: {average_returns:.2%}")
-            return average_returns
-        
-        except Exception as e:
-            st.error(f"Error fetching industry returns on attempt {attempt + 1}: {e}")
-            attempt += 1
-            time.sleep(delay)
+    data = {key: [] for key in keys}
     
-    st.error(f"Failed to fetch industry returns data after {retries} attempts.")
-    return None
-
-# Function to handle missing financial data by user input
-def handle_missing_financial_data(key, value):
-    if value is None:
-        user_input = st.text_input(f"Enter value for {key}:", "")
-        if user_input:
-            try:
-                return float(user_input.replace(',', '').replace('$', ''))
-            except ValueError:
-                st.error(f"Invalid input for {key}.")
-                return None
-    return value
+    # Use regex to extract dates and their corresponding financial data
+    date_pattern = re.compile(r'(\d{4}[-/]\d{2}[-/]\d{2})', re.IGNORECASE)
+    dates = date_pattern.findall(pdf_text)
+    st.write(f"Dates found: {dates}")
+    
+    for key in keys:
+        values = find_all_financial_data_in_text(pdf_text, key)
+        for value in values:
+            date = dates[min(len(dates) - 1, len(values) - 1)] if dates else 'Unknown'
+            data[key].append({'Date': date, 'Value': value})
+    
+    # Create a DataFrame for each key with proper indexing
+    data_frames = {}
+    for key in keys:
+        if data[key]:
+            df = pd.DataFrame(data[key])
+            data_frames[key] = df
+    
+    return data_frames
 
 # Functions for calculations (reused from the previous code)
 def calculate_moat_indicators(financials):
@@ -186,10 +131,6 @@ def conduct_stress_test(financials):
     return "Stress test results based on financial data."
 
 def pronounce_verdict(roic, stock_returns, industry_average, cagr, market_cap, intrinsic_value, operating_leverage):
-    if industry_average is None:
-        st.error("Industry average not available for comparison.")
-        return "Unable to provide verdict"
-    
     verdict = "Invest" if roic and roic > 0.1 and stock_returns > industry_average and cagr and cagr > 0.05 and market_cap and market_cap < intrinsic_value and operating_leverage and operating_leverage > 0.5 else "Do Not Invest"
     return verdict
 
@@ -199,33 +140,58 @@ st.title("EquiIntel: Comprehensive Equity Analysis AI")
 uploaded_share_prices = st.file_uploader("Upload Share Prices CSV", type="csv")
 uploaded_statements_pdf = st.file_uploader("Upload Financial Statements PDF", type="pdf")
 
-exchange = st.selectbox("Select Exchange:", list(exchange_benchmarks.keys()))
-
 if uploaded_share_prices and uploaded_statements_pdf:
     share_prices = load_share_prices(uploaded_share_prices)
     pdf_text = extract_text_from_pdf(uploaded_statements_pdf)
     
     st.write("Extracted Text from PDF:")
     st.write(pdf_text[:2000])  # Display the first 2000 characters for debugging
-
-    st.write("In case we missed out on finding any parameters, you can help us out here by inputting the data independently, which will be used in the analysis.")
-    financial_keys = ['Net Income', 'Total Assets', 'Current Liabilities', 'Capital Expenditures', 'Total Revenue', 'Market Cap', 'Book Value', 'Shares Outstanding', 'Operating Expenses', 'Cost of Revenue']
-    financials = get_financial_data_from_pdf(pdf_text, financial_keys)
     
-    # Handle missing data by user input
-    for key in financial_keys:
-        financials[key] = handle_missing_financial_data(key, financials.get(key))
+    financial_keys = ['Net Income', 'Total Assets', 'Current Liabilities', 'Capital Expenditures', 'Total Revenue', 'Market Cap', 'Book Value', 'Shares Outstanding', 'Operating Expenses', 'Cost of Revenue']
+    financial_data = get_financial_data_from_pdf(pdf_text, financial_keys)
     
     st.write("Extracted Financial Data:")
-    st.write(financials)
+    for key in financial_keys:
+        if key in financial_data:
+            df = financial_data[key]
+            if not df.empty:
+                st.write(f"{key}:")
+                st.write(df)
+            else:
+                st.write(f"Could not find {key} in the extracted text. Here are some contexts where it might appear:")
+                context_pattern = re.compile(rf'.{{0,30}}{key}.{{0,30}}', re.IGNORECASE)
+                context_matches = context_pattern.findall(pdf_text)
+                for context in context_matches:
+                    st.write(f"...{context}...")
+                # Display a text input box for additional user input if data is not available
+                additional_info = st.text_input(f"Input {key} (if any):", key=key)
+                if additional_info:
+                    try:
+                        financial_data[key] = pd.DataFrame({'Date': ['Unknown'], 'Value': [float(additional_info)]})
+                    except ValueError:
+                        st.write(f"Invalid input for {key}. Please enter a numeric value.")
     
-    # Analyze and make predictions
-    average_returns = fetch_industry_returns(exchange)
-    roic = calculate_moat_indicators(financials)
-    investments_in_high, investments_in_low = analyze_investments(financials)
-    cagr = assess_growth(financials)
-    market_cap, intrinsic_value = define_valuation(financials)
-    operating_leverage = find_operating_leverage(financials)
-    verdict = pronounce_verdict(roic, average_returns, average_returns, cagr, market_cap, intrinsic_value, operating_leverage)
+    # Perform calculations based on the most recent data
+    latest_financials = {key: df['Value'].iloc[-1] for key, df in financial_data.items() if not df.empty}
+    
+    roic = calculate_moat_indicators(latest_financials)
+    investments_in_high, investments_in_low = analyze_investments(latest_financials)
+    stock_returns = share_prices['Close'].pct_change().mean()
+    industry_average = 0.05  # Example fixed value; replace with actual industry average
+    cagr = assess_growth(latest_financials)
+    market_cap, intrinsic_value = define_valuation(latest_financials)
+    stress_scenarios = conduct_stress_test(latest_financials)
+    operating_leverage = find_operating_leverage(latest_financials)
+    verdict = pronounce_verdict(roic, stock_returns, industry_average, cagr, market_cap, intrinsic_value, operating_leverage)
 
-    st.write(f"Investment Verdict: {verdict}")
+    st.write(f"ROIC: {roic}")
+    st.write(f"Investments in High Performing Companies: {investments_in_high}")
+    st.write(f"Investments in Low Performing Companies: {investments_in_low}")
+    st.write(f"Stock returns: {stock_returns}")
+    st.write(f"Industry average returns: {industry_average}")
+    st.write(f"CAGR: {cagr}")
+    st.write(f"Market Cap: {market_cap}")
+    st.write(f"Intrinsic Value: {intrinsic_value}")
+    st.write(f"Stress Scenarios: {stress_scenarios}")
+    st.write(f"Operating Leverage: {operating_leverage}")
+    st.write(f"Verdict: {verdict}")
