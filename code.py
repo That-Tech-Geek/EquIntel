@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import pdfplumber
 import re
+from datetime import datetime
 
 # Function to load uploaded share price data
 def load_share_prices(file):
@@ -18,17 +19,18 @@ def extract_text_from_pdf(uploaded_statements_pdf):
         st.error(f"Error extracting text from PDF: {e}")
     return text
 
-# Function to find specific financial data in the extracted text
-def find_financial_data_in_text(text, key):
+# Function to find all possible values for a financial parameter in the extracted text
+def find_all_financial_data_in_text(text, key):
     pattern = re.compile(rf'{key}[\s:]*[\$]?([\d,\.]+)', re.IGNORECASE)
     matches = pattern.findall(text)
     if matches:
         st.write(f"Found possible matches for {key}:")
+        results = []
         for match in matches:
-            st.write(f"- {match}")
-        # Convert matches to floats and return the highest one
-        highest_value = max(float(match.replace(',', '').replace('$', '')) for match in matches)
-        return highest_value
+            value = float(match.replace(',', '').replace('$', ''))
+            results.append(value)
+            st.write(f"- {value}")
+        return results
     else:
         # Debug: Show the context around the missing key
         context_pattern = re.compile(rf'.{{0,30}}{key}.{{0,30}}', re.IGNORECASE)
@@ -36,16 +38,27 @@ def find_financial_data_in_text(text, key):
         st.write(f"Could not find {key} in the extracted text. Here are some contexts where it might appear:")
         for context in context_matches:
             st.write(f"...{context}...")
-    return None
+    return []
 
-# Function to get financial data from PDF text
+# Function to get financial data from PDF text with associated dates
 def get_financial_data_from_pdf(pdf_text, keys):
-    data = {}
+    data = {key: [] for key in keys}
+    
+    # Use regex to extract dates and their corresponding financial data
+    date_pattern = re.compile(r'(\d{4}[-/]\d{2}[-/]\d{2})', re.IGNORECASE)
+    dates = date_pattern.findall(pdf_text)
+    st.write(f"Dates found: {dates}")
+    
     for key in keys:
-        value = find_financial_data_in_text(pdf_text, key)
-        if value is not None:
-            data[key] = value
-    return pd.Series(data)
+        values = find_all_financial_data_in_text(pdf_text, key)
+        for value in values:
+            if dates:
+                date = dates[min(len(dates) - 1, len(values) - 1)]  # Use the latest date for simplicity
+            else:
+                date = 'Unknown'
+            data[key].append({'Date': date, 'Value': value})
+    
+    return pd.DataFrame({key: pd.DataFrame(data[key]) for key in keys})
 
 # Functions for calculations (reused from the previous code)
 def calculate_moat_indicators(financials):
@@ -131,19 +144,24 @@ if uploaded_share_prices and uploaded_statements_pdf:
     st.write(pdf_text[:2000])  # Display the first 2000 characters for debugging
     
     financial_keys = ['Net Income', 'Total Assets', 'Current Liabilities', 'Capital Expenditures', 'Total Revenue', 'Market Cap', 'Book Value', 'Shares Outstanding', 'Operating Expenses', 'Cost of Revenue']
-    financials = get_financial_data_from_pdf(pdf_text, financial_keys)
+    financial_data = get_financial_data_from_pdf(pdf_text, financial_keys)
     
     st.write("Extracted Financial Data:")
-    st.write(financials)
+    for key in financial_keys:
+        st.write(f"{key}:")
+        st.write(financial_data[key])
     
-    roic = calculate_moat_indicators(financials)
-    investments_in_high, investments_in_low = analyze_investments(financials)
+    # Perform calculations based on the most recent data
+    latest_financials = {key: df['Value'].iloc[-1] for key, df in financial_data.items() if not df.empty}
+    
+    roic = calculate_moat_indicators(latest_financials)
+    investments_in_high, investments_in_low = analyze_investments(latest_financials)
     stock_returns = share_prices['Close'].pct_change().mean()
     industry_average = 0.05  # Example fixed value; replace with actual industry average
-    cagr = assess_growth(financials)
-    market_cap, intrinsic_value = define_valuation(financials)
-    stress_scenarios = conduct_stress_test(financials)
-    operating_leverage = find_operating_leverage(financials)
+    cagr = assess_growth(latest_financials)
+    market_cap, intrinsic_value = define_valuation(latest_financials)
+    stress_scenarios = conduct_stress_test(latest_financials)
+    operating_leverage = find_operating_leverage(latest_financials)
     verdict = pronounce_verdict(roic, stock_returns, industry_average, cagr, market_cap, intrinsic_value, operating_leverage)
 
     st.write(f"ROIC: {roic}")
