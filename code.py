@@ -1,8 +1,9 @@
 import streamlit as st
 import pandas as pd
 import fitz  # PyMuPDF
-import pytesseract
 from PIL import Image
+from google.cloud import vision
+from google.cloud.vision import types
 import re
 import yfinance as yf
 
@@ -15,8 +16,8 @@ exchange_benchmarks = {
     # Add more exchanges and their benchmarks here
 }
 
-# Configure tesseract executable path (adjust if necessary)
-pytesseract.pytesseract.tesseract_cmd = r'/usr/bin/tesseract'  # Update to your Tesseract installation path
+# Initialize Google Cloud Vision client
+client = vision.ImageAnnotatorClient()
 
 # Function to load uploaded share price data
 def load_share_prices(file):
@@ -37,12 +38,23 @@ def convert_pdf_to_images(pdf_file):
         st.error(f"Error converting PDF to images: {e}")
         return []
 
-# Function to extract text from images using OCR
-def extract_text_from_image(image):
+# Function to extract text from images using Google Cloud Vision OCR
+def extract_text_from_image_google(image):
     try:
-        return pytesseract.image_to_string(image)
-    except pytesseract.TesseractNotFoundError:
-        st.error("Tesseract OCR not found. Please ensure it is installed and configured correctly.")
+        # Convert the image to a byte array
+        byte_array = image.tobytes()
+        
+        # Perform text detection
+        image = types.Image(content=byte_array)
+        response = client.text_detection(image=image)
+        
+        texts = response.text_annotations
+        if texts:
+            return texts[0].description
+        else:
+            return ""
+    except Exception as e:
+        st.error(f"Error extracting text with Google Cloud Vision: {e}")
         return ""
 
 # Function to extract text from PDF by converting to images and applying OCR
@@ -50,7 +62,7 @@ def extract_text_from_pdf(uploaded_statements_pdf):
     images = convert_pdf_to_images(uploaded_statements_pdf)
     text = ""
     for image in images:
-        text += extract_text_from_image(image)
+        text += extract_text_from_image_google(image)
     return text
 
 # Function to find specific financial data in the extracted text
@@ -106,7 +118,6 @@ def fetch_industry_returns(exchange, retries=3, delay=5):
     
     st.error(f"Failed to fetch industry returns data after {retries} attempts.")
     return None
-
 
 # Function to handle missing financial data by user input
 def handle_missing_financial_data(key, value):
@@ -236,4 +247,3 @@ if uploaded_share_prices and uploaded_statements_pdf:
     
     stress_test_results = conduct_stress_test(financials)
     st.write(f"Stress Test Results: {stress_test_results}")
-
