@@ -5,6 +5,16 @@ import pytesseract
 from PIL import Image
 import io
 import re
+import yfinance as yf
+
+# Define exchange to benchmark mapping
+exchange_benchmarks = {
+    'NSE': 'NIFTY 50',
+    'BSE': 'SENSEX',
+    'NASDAQ': 'NASDAQ Composite',
+    'NYSE': 'NYSE Composite',
+    # Add more exchanges and their benchmarks here
+}
 
 # Configure tesseract executable path (adjust if necessary)
 pytesseract.pytesseract.tesseract_cmd = r'/usr/bin/tesseract'  # Update to your Tesseract installation path
@@ -58,9 +68,9 @@ def get_financial_data_from_pdf(pdf_text, keys):
     data = {}
     for key in keys:
         data[key] = find_financial_data_in_text(pdf_text, key)
-    return pd.DataFrame([data])
+    return pd.Series(data)
 
-# Functions for calculations
+# Functions for calculations (reused from the previous code)
 def calculate_moat_indicators(financials):
     net_income = financials.get('Net Income')
     total_assets = financials.get('Total Assets')
@@ -126,17 +136,6 @@ def conduct_stress_test(financials):
     # Example stress scenarios: need specific financial data to implement
     return "Stress test results based on financial data."
 
-def calculate_industry_average(exchange, financial_data):
-    # Placeholder function to get industry average based on the exchange
-    # Replace with actual calculation or data retrieval logic
-    industry_averages = {
-        'NSE': 0.05,  # Example fixed value; replace with actual industry average calculation
-        'NYSE': 0.04,
-        'NASDAQ': 0.06,
-        # Add other exchanges and their industry averages here
-    }
-    return industry_averages.get(exchange, None)
-
 def pronounce_verdict(roic, stock_returns, industry_average, cagr, market_cap, intrinsic_value, operating_leverage):
     # Convert to scalar values if possible
     if isinstance(roic, pd.Series):
@@ -164,45 +163,8 @@ def pronounce_verdict(roic, stock_returns, industry_average, cagr, market_cap, i
 
     return verdict
 
-
 # Streamlit UI
 st.title("EquiIntel: Comprehensive Equity Analysis AI")
 
-uploaded_share_prices = st.file_uploader("Upload Share Prices CSV", type="csv")
-uploaded_statements_pdf = st.file_uploader("Upload Financial Statements PDF", type="pdf")
-company_exchange = st.selectbox("Select the company's exchange", ['NSE', 'NYSE', 'NASDAQ'])  # Add other exchanges if needed
-
-if uploaded_share_prices and uploaded_statements_pdf:
-    share_prices = load_share_prices(uploaded_share_prices)
-    pdf_text = extract_text_from_pdf(uploaded_statements_pdf)
-    
-    st.write("Extracted Text from PDF:")
-    st.write(pdf_text[:2000])  # Display the first 2000 characters for debugging
-    
-    financial_keys = ['Net Income', 'Total Assets', 'Current Liabilities', 'Capital Expenditures', 'Total Revenue', 'Market Cap', 'Book Value', 'Shares Outstanding', 'Operating Expenses', 'Cost of Revenue']
-    financial_data = get_financial_data_from_pdf(pdf_text, financial_keys)
-    
-    st.write("Extracted Financial Data:")
-    st.write(financial_data)
-    
-    roic = calculate_moat_indicators(financial_data)
-    investments_in_high, investments_in_low = analyze_investments(financial_data)
-    stock_returns = share_prices['Close'].pct_change().mean()
-    industry_average = calculate_industry_average(company_exchange, financial_data)
-    cagr = assess_growth(financial_data)
-    market_cap, intrinsic_value = define_valuation(financial_data)
-    stress_scenarios = conduct_stress_test(financial_data)
-    operating_leverage = find_operating_leverage(financial_data)
-    verdict = pronounce_verdict(roic, stock_returns, industry_average, cagr, market_cap, intrinsic_value, operating_leverage)
-
-    st.write(f"ROIC: {roic}")
-    st.write(f"Investments in times of high performance: {investments_in_high}")
-    st.write(f"Investments in times of low performance: {investments_in_low}")
-    st.write(f"Stock returns: {stock_returns}")
-    st.write(f"Industry average returns: {industry_average}")
-    st.write(f"CAGR: {cagr}")
-    st.write(f"Market Cap: {market_cap}")
-    st.write(f"Intrinsic Value: {intrinsic_value}")
-    st.write(f"Stress Scenarios: {stress_scenarios}")
-    st.write(f"Operating Leverage: {operating_leverage}")
-    st.write(f"Verdict: {verdict}")
+# Exchange Selection
+exchange = st.selectbox("Select Exchange",
