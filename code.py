@@ -138,8 +138,32 @@ def calculate_industry_average(exchange, financial_data):
     return industry_averages.get(exchange, None)
 
 def pronounce_verdict(roic, stock_returns, industry_average, cagr, market_cap, intrinsic_value, operating_leverage):
-    verdict = "Invest" if roic and roic > 0.1 and stock_returns > industry_average and cagr and cagr > 0.05 and market_cap and market_cap < intrinsic_value and operating_leverage and operating_leverage > 0.5 else "Do Not Invest"
+    # Convert to scalar values if possible
+    if isinstance(roic, pd.Series):
+        roic = roic.mean()
+    if isinstance(stock_returns, pd.Series):
+        stock_returns = stock_returns.mean()
+    if isinstance(cagr, pd.Series):
+        cagr = cagr.mean()
+    if isinstance(market_cap, pd.Series):
+        market_cap = market_cap.mean()
+    if isinstance(intrinsic_value, pd.Series):
+        intrinsic_value = intrinsic_value.mean()
+    if isinstance(operating_leverage, pd.Series):
+        operating_leverage = operating_leverage.mean()
+
+    # Ensure all values are scalar before comparison
+    if pd.api.types.is_numeric_dtype(roic) and pd.api.types.is_numeric_dtype(stock_returns) and \
+       pd.api.types.is_numeric_dtype(industry_average) and pd.api.types.is_numeric_dtype(cagr) and \
+       pd.api.types.is_numeric_dtype(market_cap) and pd.api.types.is_numeric_dtype(intrinsic_value) and \
+       pd.api.types.is_numeric_dtype(operating_leverage):
+        verdict = "Invest" if roic > 0.1 and stock_returns > industry_average and cagr > 0.05 and \
+                  market_cap < intrinsic_value and operating_leverage > 0.5 else "Do Not Invest"
+    else:
+        verdict = "Do Not Invest"  # Default verdict if any of the values are missing or not numeric
+
     return verdict
+
 
 # Streamlit UI
 st.title("EquiIntel: Comprehensive Equity Analysis AI")
