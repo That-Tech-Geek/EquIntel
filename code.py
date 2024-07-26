@@ -208,7 +208,8 @@ if uploaded_share_prices and uploaded_statements_pdf:
     
     st.write("Extracted Text from PDF:")
     st.write(pdf_text[:2000])  # Display the first 2000 characters for debugging
-    
+
+    st.write("In case we missed out on finding any parameters, you can help us out here by inputting the data independently, which will be used in the analysis.")
     financial_keys = ['Net Income', 'Total Assets', 'Current Liabilities', 'Capital Expenditures', 'Total Revenue', 'Market Cap', 'Book Value', 'Shares Outstanding', 'Operating Expenses', 'Cost of Revenue']
     financials = get_financial_data_from_pdf(pdf_text, financial_keys)
     
