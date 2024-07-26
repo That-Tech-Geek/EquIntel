@@ -4,5 +4,4 @@ PyMuPDF
 Pillow
 google-cloud-vision
 yfinance
-tesseract-ocr 
-pyocr
+easyocr
