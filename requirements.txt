@@ -4,3 +4,4 @@ fitz
 easyocr
 torch
 yfinance
+pdfplumber
