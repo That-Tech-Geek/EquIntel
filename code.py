@@ -72,33 +72,41 @@ def get_financial_data_from_pdf(pdf_text, keys):
             data[key] = value
     return pd.Series(data)
 
-# Function to fetch industry average returns based on selected exchange
-def fetch_industry_returns(exchange):
+import time
+
+def fetch_industry_returns(exchange, retries=3, delay=5):
     benchmark = exchange_benchmarks.get(exchange)
     if not benchmark:
         st.error(f"No benchmark available for the selected exchange: {exchange}.")
         return None
 
-    try:
-        st.write(f"Fetching industry returns data for benchmark: {benchmark}")
-        data = yf.download(benchmark, start="2023-01-01", end="2024-01-01")  # Adjust dates as needed
+    attempt = 0
+    while attempt < retries:
+        try:
+            st.write(f"Fetching industry returns data for benchmark: {benchmark}")
+            data = yf.download(benchmark, start="2023-01-01", end="2024-01-01")  # Adjust dates as needed
+            
+            if data.empty:
+                st.error(f"No data found for benchmark: {benchmark}.")
+                return None
+            
+            returns = data['Close'].pct_change().dropna()
+            if returns.empty:
+                st.error("No return data available.")
+                return None
+            
+            average_returns = returns.mean()
+            st.write(f"Industry Average Returns for {benchmark}: {average_returns:.2%}")
+            return average_returns
         
-        if data.empty:
-            st.error(f"No data found for benchmark: {benchmark}.")
-            return None
-        
-        returns = data['Close'].pct_change().dropna()
-        if returns.empty:
-            st.error("No return data available.")
-            return None
-        
-        average_returns = returns.mean()
-        st.write(f"Industry Average Returns for {benchmark}: {average_returns:.2%}")
-        return average_returns
+        except Exception as e:
+            st.error(f"Error fetching industry returns on attempt {attempt + 1}: {e}")
+            attempt += 1
+            time.sleep(delay)
     
-    except Exception as e:
-        st.error(f"Error fetching industry returns: {e}")
-        return None
+    st.error(f"Failed to fetch industry returns data after {retries} attempts.")
+    return None
+
 
 # Function to handle missing financial data by user input
 def handle_missing_financial_data(key, value):
