@@ -3,6 +3,8 @@ import pandas as pd
 import pdfplumber
 import re
 from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import easyocr
 
 # Function to load uploaded share price data
 def load_share_prices(file):
@@ -18,6 +20,10 @@ def extract_text_from_pdf(uploaded_statements_pdf):
     except Exception as e:
         st.error(f"Error extracting text from PDF: {e}")
     return text
+
+# Function to initialize EasyOCR reader
+def initialize_easyocr_reader():
+    return easyocr.Reader(['en'])
 
 # Function to find all possible values for a financial parameter in the extracted text
 def find_all_financial_data_in_text(text, key):
@@ -49,12 +55,15 @@ def get_financial_data_from_pdf(pdf_text, keys):
     dates = date_pattern.findall(pdf_text)
     st.write(f"Dates found: {dates}")
     
-    for key in keys:
-        values = find_all_financial_data_in_text(pdf_text, key)
-        for value in values:
-            date = dates[min(len(dates) - 1, len(values) - 1)] if dates else 'Unknown'
-            data[key].append({'Date': date, 'Value': value})
-    
+    with ThreadPoolExecutor() as executor:
+        futures = {executor.submit(find_all_financial_data_in_text, pdf_text, key): key for key in keys}
+        for future in as_completed(futures):
+            key = futures[future]
+            values = future.result()
+            for value in values:
+                date = dates[min(len(dates) - 1, len(values) - 1)] if dates else 'Unknown'
+                data[key].append({'Date': date, 'Value': value})
+
     # Create a DataFrame for each key with proper indexing
     data_frames = {}
     for key in keys:
@@ -64,7 +73,7 @@ def get_financial_data_from_pdf(pdf_text, keys):
     
     return data_frames
 
-# Functions for calculations (reused from the previous code)
+# Functions for calculations
 def calculate_moat_indicators(financials):
     net_income = financials.get('Net Income')
     total_assets = financials.get('Total Assets')
@@ -148,6 +157,11 @@ if uploaded_share_prices and uploaded_statements_pdf:
     st.write(pdf_text[:2000])  # Display the first 2000 characters for debugging
     
     financial_keys = ['Net Income', 'Total Assets', 'Current Liabilities', 'Capital Expenditures', 'Total Revenue', 'Market Cap', 'Book Value', 'Shares Outstanding', 'Operating Expenses', 'Cost of Revenue']
+    
+    # Initialize EasyOCR reader
+    easyocr_reader = initialize_easyocr_reader()
+
+    # Get financial data from PDF text
     financial_data = get_financial_data_from_pdf(pdf_text, financial_keys)
     
     st.write("Extracted Financial Data:")
@@ -174,14 +188,37 @@ if uploaded_share_prices and uploaded_statements_pdf:
     # Perform calculations based on the most recent data
     latest_financials = {key: df['Value'].iloc[-1] for key, df in financial_data.items() if not df.empty}
     
-    roic = calculate_moat_indicators(latest_financials)
-    investments_in_high, investments_in_low = analyze_investments(latest_financials)
+    with ThreadPoolExecutor() as executor:
+        future_results = {
+            'roic': executor.submit(calculate_moat_indicators, latest_financials),
+            'investments': executor.submit(analyze_investments, latest_financials),
+            'growth': executor.submit(assess_growth, latest_financials),
+            'valuation': executor.submit(define_valuation, latest_financials),
+            'leverage': executor.submit(find_operating_leverage, latest_financials)
+        }
+
+        roic = None
+        investments_in_high = investments_in_low = None
+        cagr = None
+        market_cap = intrinsic_value = None
+        operating_leverage = None
+
+        for key, future in future_results.items():
+            result = future.result()
+            if key == 'roic':
+                roic = result
+            elif key == 'investments':
+                investments_in_high, investments_in_low = result
+            elif key == 'growth':
+                cagr = result
+            elif key == 'valuation':
+                market_cap, intrinsic_value = result
+            elif key == 'leverage':
+                operating_leverage = result
+
     stock_returns = share_prices['Close'].pct_change().mean()
     industry_average = 0.05  # Example fixed value; replace with actual industry average
-    cagr = assess_growth(latest_financials)
-    market_cap, intrinsic_value = define_valuation(latest_financials)
     stress_scenarios = conduct_stress_test(latest_financials)
-    operating_leverage = find_operating_leverage(latest_financials)
     verdict = pronounce_verdict(roic, stock_returns, industry_average, cagr, market_cap, intrinsic_value, operating_leverage)
 
     st.write(f"ROIC: {roic}")
