@@ -1,8 +1,6 @@
-streamlit
-pandas
-PyMuPDF
-Pillow
-google-cloud-vision
-yfinance
-easyocr
-torch
+streamlit==1.20.0
+pandas==2.0.3
+PyMuPDF==1.0.5
+easyocr==1.7.0
+torch==2.0.1
+yfinance==0.2.24
