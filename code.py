@@ -18,14 +18,20 @@ def extract_text_from_pdf(uploaded_statements_pdf):
         st.error(f"Error extracting text from PDF: {e}")
     return text
 
-# Function to find specific financial data in the extracted text
+# Function to find specific financial data in the extracted text with debug information
 def find_financial_data_in_text(text, key):
-    # Attempt to match common patterns found in financial statements
     pattern = re.compile(rf'{key}[\s:]*[\$]?([\d,\.]+)', re.IGNORECASE)
     match = pattern.search(text)
     if match:
+        st.write(f"Found {key}: {match.group(1)}")
         return float(match.group(1).replace(',', '').replace('$', ''))
-    st.write(f"Could not find {key} in the extracted text.")
+    else:
+        # Debug: Show the context around the missing key
+        context_pattern = re.compile(rf'.{{0,30}}{key}.{{0,30}}', re.IGNORECASE)
+        context_matches = context_pattern.findall(text)
+        st.write(f"Could not find {key} in the extracted text. Here are some contexts where it might appear:")
+        for context in context_matches:
+            st.write(f"...{context}...")
     return None
 
 # Function to get financial data from PDF text
