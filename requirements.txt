@@ -1,13 +1,6 @@
 streamlit
 pandas
-numpy
-scikit-learn
-statsmodels
-yfinance
-PyPDF2
-pdf2image 
-pytesseract
 PyMuPDF
-pdfplumber
-google.cloud
-google.cloud.vision
+Pillow
+google-cloud-vision
+yfinance
