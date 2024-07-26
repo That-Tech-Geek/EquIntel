@@ -3,7 +3,6 @@ import pandas as pd
 import fitz  # PyMuPDF
 import pytesseract
 from PIL import Image
-import io
 import re
 import yfinance as yf
 
@@ -60,15 +59,58 @@ def find_financial_data_in_text(text, key):
     match = pattern.search(text)
     if match:
         return float(match.group(1).replace(',', '').replace('$', ''))
-    st.write(f"Could not find {key} in the extracted text.")
     return None
 
 # Function to get financial data from PDF text
 def get_financial_data_from_pdf(pdf_text, keys):
     data = {}
     for key in keys:
-        data[key] = find_financial_data_in_text(pdf_text, key)
+        value = find_financial_data_in_text(pdf_text, key)
+        if value is None:
+            data[key] = None
+        else:
+            data[key] = value
     return pd.Series(data)
+
+# Function to fetch industry average returns based on selected exchange
+def fetch_industry_returns(exchange):
+    benchmark = exchange_benchmarks.get(exchange)
+    if not benchmark:
+        st.error(f"No benchmark available for the selected exchange: {exchange}.")
+        return None
+
+    try:
+        st.write(f"Fetching industry returns data for benchmark: {benchmark}")
+        data = yf.download(benchmark, start="2023-01-01", end="2024-01-01")  # Adjust dates as needed
+        
+        if data.empty:
+            st.error(f"No data found for benchmark: {benchmark}.")
+            return None
+        
+        returns = data['Close'].pct_change().dropna()
+        if returns.empty:
+            st.error("No return data available.")
+            return None
+        
+        average_returns = returns.mean()
+        st.write(f"Industry Average Returns for {benchmark}: {average_returns:.2%}")
+        return average_returns
+    
+    except Exception as e:
+        st.error(f"Error fetching industry returns: {e}")
+        return None
+
+# Function to handle missing financial data by user input
+def handle_missing_financial_data(key, value):
+    if value is None:
+        user_input = st.text_input(f"Enter value for {key}:", "")
+        if user_input:
+            try:
+                return float(user_input.replace(',', '').replace('$', ''))
+            except ValueError:
+                st.error(f"Invalid input for {key}.")
+                return None
+    return value
 
 # Functions for calculations (reused from the previous code)
 def calculate_moat_indicators(financials):
@@ -137,102 +179,52 @@ def conduct_stress_test(financials):
     return "Stress test results based on financial data."
 
 def pronounce_verdict(roic, stock_returns, industry_average, cagr, market_cap, intrinsic_value, operating_leverage):
-    # Convert to scalar values if possible
-    if isinstance(roic, pd.Series):
-        roic = roic.mean()
-    if isinstance(stock_returns, pd.Series):
-        stock_returns = stock_returns.mean()
-    if isinstance(cagr, pd.Series):
-        cagr = cagr.mean()
-    if isinstance(market_cap, pd.Series):
-        market_cap = market_cap.mean()
-    if isinstance(intrinsic_value, pd.Series):
-        intrinsic_value = intrinsic_value.mean()
-    if isinstance(operating_leverage, pd.Series):
-        operating_leverage = operating_leverage.mean()
-
-    # Ensure all values are scalar before comparison
-    if pd.api.types.is_numeric_dtype(roic) and pd.api.types.is_numeric_dtype(stock_returns) and \
-       pd.api.types.is_numeric_dtype(industry_average) and pd.api.types.is_numeric_dtype(cagr) and \
-       pd.api.types.is_numeric_dtype(market_cap) and pd.api.types.is_numeric_dtype(intrinsic_value) and \
-       pd.api.types.is_numeric_dtype(operating_leverage):
-        verdict = "Invest" if roic > 0.1 and stock_returns > industry_average and cagr > 0.05 and \
-                  market_cap < intrinsic_value and operating_leverage > 0.5 else "Do Not Invest"
-    else:
-        verdict = "Do Not Invest"  # Default verdict if any of the values are missing or not numeric
-
+    if industry_average is None:
+        st.error("Industry average not available for comparison.")
+        return "Unable to provide verdict"
+    
+    verdict = "Invest" if roic and roic > 0.1 and stock_returns > industry_average and cagr and cagr > 0.05 and market_cap and market_cap < intrinsic_value and operating_leverage and operating_leverage > 0.5 else "Do Not Invest"
     return verdict
 
 # Streamlit UI
 st.title("EquiIntel: Comprehensive Equity Analysis AI")
 
-# Exchange Selection
-exchange = st.selectbox("Select Exchange", list(exchange_benchmarks.keys()))
+uploaded_share_prices = st.file_uploader("Upload Share Prices CSV", type="csv")
+uploaded_statements_pdf = st.file_uploader("Upload Financial Statements PDF", type="pdf")
 
-# Upload PDF and CSV files
-pdf_file = st.file_uploader("Upload PDF Financial Statements", type="pdf")
-csv_file = st.file_uploader("Upload CSV Share Price Data", type="csv")
+exchange = st.selectbox("Select Exchange:", list(exchange_benchmarks.keys()))
 
-if pdf_file and csv_file:
-    # Extract and process PDF data
-    pdf_text = extract_text_from_pdf(pdf_file)
+if uploaded_share_prices and uploaded_statements_pdf:
+    share_prices = load_share_prices(uploaded_share_prices)
+    pdf_text = extract_text_from_pdf(uploaded_statements_pdf)
     
-    financial_keys = [
-        'Net Income', 'Capital Expenditures', 'Total Revenue', 'Market Cap',
-        'Book Value', 'Shares Outstanding', 'Operating Expenses', 'Cost of Revenue'
-    ]
-    financial_data = get_financial_data_from_pdf(pdf_text, financial_keys)
+    st.write("Extracted Text from PDF:")
+    st.write(pdf_text[:2000])  # Display the first 2000 characters for debugging
+    
+    financial_keys = ['Net Income', 'Total Assets', 'Current Liabilities', 'Capital Expenditures', 'Total Revenue', 'Market Cap', 'Book Value', 'Shares Outstanding', 'Operating Expenses', 'Cost of Revenue']
+    financials = get_financial_data_from_pdf(pdf_text, financial_keys)
+    
+    # Handle missing data by user input
+    for key in financial_keys:
+        financials[key] = handle_missing_financial_data(key, financials.get(key))
     
     st.write("Extracted Financial Data:")
-    st.write(financial_data)
+    st.write(financials)
     
-    # User input for missing financial data
-    st.write("Please input any missing financial data:")
-    net_income = st.number_input("Net Income", value=financial_data.get('Net Income', 0.0))
-    capital_expenditures = st.number_input("Capital Expenditures", value=financial_data.get('Capital Expenditures', 0.0))
-    total_revenue = st.number_input("Total Revenue", value=financial_data.get('Total Revenue', 0.0))
-    market_cap = st.number_input("Market Cap", value=financial_data.get('Market Cap', 0.0))
-    book_value = st.number_input("Book Value", value=financial_data.get('Book Value', 0.0))
-    shares_outstanding = st.number_input("Shares Outstanding", value=financial_data.get('Shares Outstanding', 0.0))
-    operating_expenses = st.number_input("Operating Expenses", value=financial_data.get('Operating Expenses', 0.0))
-    cost_of_revenue = st.number_input("Cost of Revenue", value=financial_data.get('Cost of Revenue', 0.0))
-    
-    # Create a DataFrame with the user inputs
-    financials = pd.Series({
-        'Net Income': net_income,
-        'Capital Expenditures': capital_expenditures,
-        'Total Revenue': total_revenue,
-        'Market Cap': market_cap,
-        'Book Value': book_value,
-        'Shares Outstanding': shares_outstanding,
-        'Operating Expenses': operating_expenses,
-        'Cost of Revenue': cost_of_revenue
-    })
-    
-    # Calculate ROIC and other financial indicators
     roic = calculate_moat_indicators(financials)
     investments_in_high, investments_in_low = analyze_investments(financials)
+    stock_returns = share_prices['Close'].pct_change().mean()
+    
+    # Fetch and use industry average returns
+    industry_average = fetch_industry_returns(exchange)
+    
     cagr = assess_growth(financials)
     market_cap, intrinsic_value = define_valuation(financials)
     operating_leverage = find_operating_leverage(financials)
     
-    # Fetch industry average returns
-    industry_average = fetch_industry_returns(exchange)
+    verdict = pronounce_verdict(roic, stock_returns, industry_average, cagr, market_cap, intrinsic_value, operating_leverage)
+    st.write(f"Verdict: {verdict}")
     
-    if industry_average is not None:
-        stock_returns = financials.get('Total Revenue')  # Example placeholder for actual returns data
-        verdict = pronounce_verdict(roic, stock_returns, industry_average, cagr, market_cap, intrinsic_value, operating_leverage)
-        st.write("Verdict:", verdict)
-        st.write("Industry Average Returns:", industry_average)
-    
-    # Display results
-    st.write("ROIC:", roic)
-    st.write("Investments in High Performance:", investments_in_high)
-    st.write("Investments in Low Performance:", investments_in_low)
-    st.write("CAGR:", cagr)
-    st.write("Market Cap:", market_cap)
-    st.write("Intrinsic Value:", intrinsic_value)
-    st.write("Operating Leverage:", operating_leverage)
-    
-    # Display stress test results
-    st.write(conduct_stress_test(financials))
+    stress_test_results = conduct_stress_test(financials)
+    st.write(f"Stress Test Results: {stress_test_results}")
+
