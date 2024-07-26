@@ -151,10 +151,19 @@ if uploaded_share_prices and uploaded_statements_pdf:
         if not financial_data[key].empty:
             st.write(f"{key}:")
             st.write(financial_data[key])
-            # Display a text input box for additional user input if data is available
-            additional_info = st.text_input(f"Input additional data for {key} (if any):", key=key)
+        else:
+            st.write(f"Could not find {key} in the extracted text. Here are some contexts where it might appear:")
+            context_pattern = re.compile(rf'.{{0,30}}{key}.{{0,30}}', re.IGNORECASE)
+            context_matches = context_pattern.findall(pdf_text)
+            for context in context_matches:
+                st.write(f"...{context}...")
+            # Display a text input box for additional user input if data is not available
+            additional_info = st.text_input(f"Input {key} (if any):", key=key)
             if additional_info:
-                st.write(f"Additional data for {key}: {additional_info}")
+                try:
+                    financial_data[key] = pd.DataFrame({'Date': ['Unknown'], 'Value': [float(additional_info)]})
+                except ValueError:
+                    st.write(f"Invalid input for {key}. Please enter a numeric value.")
     
     # Perform calculations based on the most recent data
     latest_financials = {key: df['Value'].iloc[-1] for key, df in financial_data.items() if not df.empty}
