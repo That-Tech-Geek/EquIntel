@@ -2,8 +2,7 @@ import streamlit as st
 import pandas as pd
 import fitz  # PyMuPDF
 from PIL import Image
-from google.cloud import vision
-from google.cloud.vision import types
+from google.cloud import vision_v1
 import re
 import yfinance as yf
 
@@ -17,7 +16,7 @@ exchange_benchmarks = {
 }
 
 # Initialize Google Cloud Vision client
-client = vision.ImageAnnotatorClient()
+client = vision_v1.ImageAnnotatorClient()
 
 # Function to load uploaded share price data
 def load_share_prices(file):
@@ -45,8 +44,8 @@ def extract_text_from_image_google(image):
         byte_array = image.tobytes()
         
         # Perform text detection
-        image = types.Image(content=byte_array)
-        response = client.text_detection(image=image)
+        image_content = vision_v1.Image(content=byte_array)
+        response = client.text_detection(image=image_content)
         
         texts = response.text_annotations
         if texts:
