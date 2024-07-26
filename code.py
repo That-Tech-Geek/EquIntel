@@ -152,7 +152,7 @@ if uploaded_share_prices and uploaded_statements_pdf:
             st.write(f"{key}:")
             st.write(financial_data[key])
             # Display a text input box for additional user input if data is available
-            additional_info = st.text_input(f"Input additional data for {key} (if any):")
+            additional_info = st.text_input(f"Input additional data for {key} (if any):", key=key)
             if additional_info:
                 st.write(f"Additional data for {key}: {additional_info}")
     
