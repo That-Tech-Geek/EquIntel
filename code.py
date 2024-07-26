@@ -21,10 +21,12 @@ def extract_text_from_pdf(uploaded_statements_pdf):
 # Function to find specific financial data in the extracted text with debug information
 def find_financial_data_in_text(text, key):
     pattern = re.compile(rf'{key}[\s:]*[\$]?([\d,\.]+)', re.IGNORECASE)
-    match = pattern.search(text)
-    if match:
-        st.write(f"Found {key}: {match.group(1)}")
-        return float(match.group(1).replace(',', '').replace('$', ''))
+    matches = pattern.findall(text)
+    if matches:
+        st.write(f"Found possible matches for {key}:")
+        for match in matches:
+            st.write(f"- {match}")
+        return matches
     else:
         # Debug: Show the context around the missing key
         context_pattern = re.compile(rf'.{{0,30}}{key}.{{0,30}}', re.IGNORECASE)
@@ -34,11 +36,22 @@ def find_financial_data_in_text(text, key):
             st.write(f"...{context}...")
     return None
 
+# Function to get user selection from a list of contexts
+def select_context(key, contexts):
+    selected_context = st.selectbox(f"Select the relevant context for '{key}':", contexts)
+    return selected_context
+
 # Function to get financial data from PDF text
 def get_financial_data_from_pdf(pdf_text, keys):
     data = {}
     for key in keys:
-        data[key] = find_financial_data_in_text(pdf_text, key)
+        possible_matches = find_financial_data_in_text(pdf_text, key)
+        if possible_matches:
+            if len(possible_matches) > 1:
+                selected_match = select_context(key, possible_matches)
+                data[key] = float(selected_match.replace(',', '').replace('$', ''))
+            elif possible_matches:
+                data[key] = float(possible_matches[0].replace(',', '').replace('$', ''))
     return pd.Series(data)
 
 # Functions for calculations (reused from the previous code)
