@@ -1,14 +1,13 @@
 import streamlit as st
 import pandas as pd
 import fitz  # PyMuPDF
-import pyocr
+import easyocr
 from PIL import Image
 import re
 import yfinance as yf
 
-# Initialize OCR tool
-ocr_tool = pyocr.get_available_tools()[0]  # Get the first available OCR tool
-lang = ocr_tool.get_available_languages()[0]  # Get the default language
+# Initialize EasyOCR reader
+reader = easyocr.Reader(['en'])  # Initialize reader with English language
 
 # Define exchange to benchmark mapping
 exchange_benchmarks = {
@@ -38,10 +37,10 @@ def convert_pdf_to_images(pdf_file):
         st.error(f"Error converting PDF to images: {e}")
         return []
 
-# Function to extract text from images using OCR
+# Function to extract text from images using EasyOCR
 def extract_text_from_image(image):
     try:
-        return ocr_tool.image_to_string(image, lang=lang)
+        return ' '.join([result[1] for result in reader.readtext(image)])
     except Exception as e:
         st.error(f"Error extracting text from image: {e}")
         return ""
