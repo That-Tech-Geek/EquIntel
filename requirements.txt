@@ -7,4 +7,3 @@ yfinance
 easyocr
 torch
 pdb
-code
