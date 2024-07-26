@@ -1,10 +1,14 @@
 import streamlit as st
 import pandas as pd
 import fitz  # PyMuPDF
+import pyocr
 from PIL import Image
-from google.cloud import vision_v1
 import re
 import yfinance as yf
+
+# Initialize OCR tool
+ocr_tool = pyocr.get_available_tools()[0]  # Get the first available OCR tool
+lang = ocr_tool.get_available_languages()[0]  # Get the default language
 
 # Define exchange to benchmark mapping
 exchange_benchmarks = {
@@ -14,9 +18,6 @@ exchange_benchmarks = {
     'NYSE': 'NYSE Composite',
     # Add more exchanges and their benchmarks here
 }
-
-# Initialize Google Cloud Vision client
-client = vision_v1.ImageAnnotatorClient()
 
 # Function to load uploaded share price data
 def load_share_prices(file):
@@ -37,23 +38,12 @@ def convert_pdf_to_images(pdf_file):
         st.error(f"Error converting PDF to images: {e}")
         return []
 
-# Function to extract text from images using Google Cloud Vision OCR
-def extract_text_from_image_google(image):
+# Function to extract text from images using OCR
+def extract_text_from_image(image):
     try:
-        # Convert the image to a byte array
-        byte_array = image.tobytes()
-        
-        # Perform text detection
-        image_content = vision_v1.Image(content=byte_array)
-        response = client.text_detection(image=image_content)
-        
-        texts = response.text_annotations
-        if texts:
-            return texts[0].description
-        else:
-            return ""
+        return ocr_tool.image_to_string(image, lang=lang)
     except Exception as e:
-        st.error(f"Error extracting text with Google Cloud Vision: {e}")
+        st.error(f"Error extracting text from image: {e}")
         return ""
 
 # Function to extract text from PDF by converting to images and applying OCR
@@ -61,7 +51,7 @@ def extract_text_from_pdf(uploaded_statements_pdf):
     images = convert_pdf_to_images(uploaded_statements_pdf)
     text = ""
     for image in images:
-        text += extract_text_from_image_google(image)
+        text += extract_text_from_image(image)
     return text
 
 # Function to find specific financial data in the extracted text
@@ -230,19 +220,13 @@ if uploaded_share_prices and uploaded_statements_pdf:
     st.write("Extracted Financial Data:")
     st.write(financials)
     
+    # Analyze and make predictions
+    average_returns = fetch_industry_returns(exchange)
     roic = calculate_moat_indicators(financials)
     investments_in_high, investments_in_low = analyze_investments(financials)
-    stock_returns = share_prices['Close'].pct_change().mean()
-    
-    # Fetch and use industry average returns
-    industry_average = fetch_industry_returns(exchange)
-    
     cagr = assess_growth(financials)
     market_cap, intrinsic_value = define_valuation(financials)
     operating_leverage = find_operating_leverage(financials)
-    
-    verdict = pronounce_verdict(roic, stock_returns, industry_average, cagr, market_cap, intrinsic_value, operating_leverage)
-    st.write(f"Verdict: {verdict}")
-    
-    stress_test_results = conduct_stress_test(financials)
-    st.write(f"Stress Test Results: {stress_test_results}")
+    verdict = pronounce_verdict(roic, average_returns, average_returns, cagr, market_cap, intrinsic_value, operating_leverage)
+
+    st.write(f"Investment Verdict: {verdict}")
