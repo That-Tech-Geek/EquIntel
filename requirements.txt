@@ -9,3 +9,5 @@ pdf2image
 pytesseract
 PyMuPDF
 pdfplumber
+google.cloud
+google.cloud.vision
