@@ -1,6 +1,6 @@
-streamlit==1.20.0
-pandas==2.0.3
-fitz==1.0.5
-easyocr==1.7.0
-torch==2.0.1
-yfinance==0.2.24
+streamlit
+pandas
+fitz
+easyocr
+torch
+yfinance
