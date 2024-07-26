@@ -6,11 +6,13 @@ from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import easyocr
 
-# Function to load uploaded share price data
+# Cache the function to load uploaded share price data
+@st.cache_data
 def load_share_prices(file):
     return pd.read_csv(file, index_col=0, parse_dates=True)
 
-# Function to extract text from PDF using pdfplumber
+# Cache the function to extract text from PDF using pdfplumber
+@st.cache_data
 def extract_text_from_pdf(uploaded_statements_pdf):
     text = ""
     try:
@@ -21,7 +23,8 @@ def extract_text_from_pdf(uploaded_statements_pdf):
         st.error(f"Error extracting text from PDF: {e}")
     return text
 
-# Function to initialize EasyOCR reader
+# Cache the EasyOCR reader initialization
+@st.cache_resource
 def initialize_easyocr_reader():
     return easyocr.Reader(['en'])
 
@@ -46,7 +49,8 @@ def find_all_financial_data_in_text(text, key):
             st.write(f"...{context}...")
     return []
 
-# Function to get financial data from PDF text with associated dates
+# Cache the function to get financial data from PDF text with associated dates
+@st.cache_data
 def get_financial_data_from_pdf(pdf_text, keys):
     data = {key: [] for key in keys}
     
@@ -192,43 +196,4 @@ if uploaded_share_prices and uploaded_statements_pdf:
         future_results = {
             'roic': executor.submit(calculate_moat_indicators, latest_financials),
             'investments': executor.submit(analyze_investments, latest_financials),
-            'growth': executor.submit(assess_growth, latest_financials),
-            'valuation': executor.submit(define_valuation, latest_financials),
-            'leverage': executor.submit(find_operating_leverage, latest_financials)
-        }
-
-        roic = None
-        investments_in_high = investments_in_low = None
-        cagr = None
-        market_cap = intrinsic_value = None
-        operating_leverage = None
-
-        for key, future in future_results.items():
-            result = future.result()
-            if key == 'roic':
-                roic = result
-            elif key == 'investments':
-                investments_in_high, investments_in_low = result
-            elif key == 'growth':
-                cagr = result
-            elif key == 'valuation':
-                market_cap, intrinsic_value = result
-            elif key == 'leverage':
-                operating_leverage = result
-
-    stock_returns = share_prices['Close'].pct_change().mean()
-    industry_average = 0.05  # Example fixed value; replace with actual industry average
-    stress_scenarios = conduct_stress_test(latest_financials)
-    verdict = pronounce_verdict(roic, stock_returns, industry_average, cagr, market_cap, intrinsic_value, operating_leverage)
-
-    st.write(f"ROIC: {roic}")
-    st.write(f"Investments in High Performing Companies: {investments_in_high}")
-    st.write(f"Investments in Low Performing Companies: {investments_in_low}")
-    st.write(f"Stock returns: {stock_returns}")
-    st.write(f"Industry average returns: {industry_average}")
-    st.write(f"CAGR: {cagr}")
-    st.write(f"Market Cap: {market_cap}")
-    st.write(f"Intrinsic Value: {intrinsic_value}")
-    st.write(f"Stress Scenarios: {stress_scenarios}")
-    st.write(f"Operating Leverage: {operating_leverage}")
-    st.write(f"Verdict: {verdict}")
+            'growth': executor.submit(assess_growth, latest
