@@ -3,15 +3,18 @@ import pandas as pd
 import pdfplumber
 import re
 from datetime import datetime
-from concurrent.futures import ThreadPoolExecutor, as_completed
-import easyocr
+from sklearn.model_selection import train_test_split
+from sklearn.linear_model import LinearRegression
+from sklearn.preprocessing import StandardScaler
+from sklearn.cluster import KMeans
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import accuracy_score
+from joblib import dump, load
 
-# Cache the function to load uploaded share price data
 @st.cache_data
 def load_share_prices(file):
     return pd.read_csv(file, index_col=0, parse_dates=True)
 
-# Cache the function to extract text from PDF using pdfplumber
 @st.cache_data
 def extract_text_from_pdf(uploaded_statements_pdf):
     text = ""
@@ -23,12 +26,6 @@ def extract_text_from_pdf(uploaded_statements_pdf):
         st.error(f"Error extracting text from PDF: {e}")
     return text
 
-# Cache the EasyOCR reader initialization
-@st.cache_resource
-def initialize_easyocr_reader():
-    return easyocr.Reader(['en'])
-
-# Function to find all possible values for a financial parameter in the extracted text
 def find_all_financial_data_in_text(text, key):
     pattern = re.compile(rf'{key}[\s:]*[\$]?([\d,\.]+)', re.IGNORECASE)
     matches = pattern.findall(text)
@@ -41,7 +38,6 @@ def find_all_financial_data_in_text(text, key):
             st.write(f"- {value}")
         return results
     else:
-        # Debug: Show the context around the missing key
         context_pattern = re.compile(rf'.{{0,30}}{key}.{{0,30}}', re.IGNORECASE)
         context_matches = context_pattern.findall(text)
         st.write(f"Could not find {key} in the extracted text. Here are some contexts where it might appear:")
@@ -49,26 +45,18 @@ def find_all_financial_data_in_text(text, key):
             st.write(f"...{context}...")
     return []
 
-# Cache the function to get financial data from PDF text with associated dates
-@st.cache_data
 def get_financial_data_from_pdf(pdf_text, keys):
     data = {key: [] for key in keys}
-    
-    # Use regex to extract dates and their corresponding financial data
     date_pattern = re.compile(r'(\d{4}[-/]\d{2}[-/]\d{2})', re.IGNORECASE)
     dates = date_pattern.findall(pdf_text)
     st.write(f"Dates found: {dates}")
     
-    with ThreadPoolExecutor() as executor:
-        futures = {executor.submit(find_all_financial_data_in_text, pdf_text, key): key for key in keys}
-        for future in as_completed(futures):
-            key = futures[future]
-            values = future.result()
-            for value in values:
-                date = dates[min(len(dates) - 1, len(values) - 1)] if dates else 'Unknown'
-                data[key].append({'Date': date, 'Value': value})
-
-    # Create a DataFrame for each key with proper indexing
+    for key in keys:
+        values = find_all_financial_data_in_text(pdf_text, key)
+        for value in values:
+            date = dates[min(len(dates) - 1, len(values) - 1)] if dates else 'Unknown'
+            data[key].append({'Date': date, 'Value': value})
+    
     data_frames = {}
     for key in keys:
         if data[key]:
@@ -77,7 +65,6 @@ def get_financial_data_from_pdf(pdf_text, keys):
     
     return data_frames
 
-# Functions for calculations
 def calculate_moat_indicators(financials):
     net_income = financials.get('Net Income')
     total_assets = financials.get('Total Assets')
@@ -140,14 +127,62 @@ def find_operating_leverage(financials):
     return None
 
 def conduct_stress_test(financials):
-    # Example stress scenarios: need specific financial data to implement
     return "Stress test results based on financial data."
 
 def pronounce_verdict(roic, stock_returns, industry_average, cagr, market_cap, intrinsic_value, operating_leverage):
     verdict = "Invest" if roic and roic > 0.1 and stock_returns > industry_average and cagr and cagr > 0.05 and market_cap and market_cap < intrinsic_value and operating_leverage and operating_leverage > 0.5 else "Do Not Invest"
     return verdict
 
-# Streamlit UI
+@st.cache_resource
+def train_price_prediction_model(share_prices):
+    share_prices['Date'] = share_prices.index
+    share_prices['Date'] = share_prices['Date'].map(datetime.toordinal)
+    X = share_prices[['Date']]
+    y = share_prices['Close']
+    
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+    model = LinearRegression()
+    model.fit(X_train, y_train)
+    
+    return model
+
+def predict_future_prices(model, share_prices, days_into_future=30):
+    last_date = share_prices.index[-1]
+    future_dates = [last_date + pd.Timedelta(days=x) for x in range(1, days_into_future + 1)]
+    future_dates_ordinal = [date.toordinal() for date in future_dates]
+    
+    future_prices = model.predict(pd.DataFrame(future_dates_ordinal, columns=['Date']))
+    return pd.DataFrame({'Date': future_dates, 'Predicted Prices': future_prices})
+
+@st.cache_resource
+def train_clustering_model(financial_data):
+    scaler = StandardScaler()
+    scaled_data = scaler.fit_transform(financial_data)
+    kmeans = KMeans(n_clusters=3, random_state=42)
+    kmeans.fit(scaled_data)
+    
+    return kmeans, scaler
+
+def cluster_companies(kmeans, scaler, financial_data):
+    scaled_data = scaler.transform(financial_data)
+    clusters = kmeans.predict(scaled_data)
+    return clusters
+
+@st.cache_resource
+def train_classification_model(financial_data, labels):
+    X_train, X_test, y_train, y_test = train_test_split(financial_data, labels, test_size=0.2, random_state=42)
+    model = RandomForestClassifier(random_state=42)
+    model.fit(X_train, y_train)
+    
+    y_pred = model.predict(X_test)
+    accuracy = accuracy_score(y_test, y_pred)
+    st.write(f"Classification Model Accuracy: {accuracy}")
+    
+    return model
+
+def classify_investments(model, financial_data):
+    return model.predict(financial_data)
+
 st.title("EquiIntel: Comprehensive Equity Analysis AI")
 
 uploaded_share_prices = st.file_uploader("Upload Share Prices CSV", type="csv")
@@ -158,14 +193,9 @@ if uploaded_share_prices and uploaded_statements_pdf:
     pdf_text = extract_text_from_pdf(uploaded_statements_pdf)
     
     st.write("Extracted Text from PDF:")
-    st.write(pdf_text[:2000])  # Display the first 2000 characters for debugging
+    st.write(pdf_text[:2000])
     
     financial_keys = ['Net Income', 'Total Assets', 'Current Liabilities', 'Capital Expenditures', 'Total Revenue', 'Market Cap', 'Book Value', 'Shares Outstanding', 'Operating Expenses', 'Cost of Revenue']
-    
-    # Initialize EasyOCR reader
-    easyocr_reader = initialize_easyocr_reader()
-
-    # Get financial data from PDF text
     financial_data = get_financial_data_from_pdf(pdf_text, financial_keys)
     
     st.write("Extracted Financial Data:")
@@ -175,25 +205,6 @@ if uploaded_share_prices and uploaded_statements_pdf:
             if not df.empty:
                 st.write(f"{key}:")
                 st.write(df)
-            else:
-                st.write(f"Could not find {key} in the extracted text. Here are some contexts where it might appear:")
-                context_pattern = re.compile(rf'.{{0,30}}{key}.{{0,30}}', re.IGNORECASE)
-                context_matches = context_pattern.findall(pdf_text)
-                for context in context_matches:
-                    st.write(f"...{context}...")
-                # Display a text input box for additional user input if data is not available
-                additional_info = st.text_input(f"Input {key} (if any):", key=key)
-                if additional_info:
-                    try:
-                        financial_data[key] = pd.DataFrame({'Date': ['Unknown'], 'Value': [float(additional_info)]})
-                    except ValueError:
-                        st.write(f"Invalid input for {key}. Please enter a numeric value.")
-    
-    # Perform calculations based on the most recent data
-    latest_financials = {key: df['Value'].iloc[-1] for key, df in financial_data.items() if not df.empty}
-    
-    with ThreadPoolExecutor() as executor:
-        future_results = {
-            'roic': executor.submit(calculate_moat_indicators, latest_financials),
-            'investments': executor.submit(analyze_investments, latest_financials),
-            'growth': executor.submit(assess_growth, latest
+
+    roic = calculate_moat_indicators(financial_data)
+    investments_in_high, investments_in_low = analyze_investments(financial_data)
